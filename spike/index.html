@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Embedding spike</title>
+<style>
+  html, body { margin: 0; height: 100%; }
+  body { font: 14px/1.4 system-ui, sans-serif; background: #eef4ff; color: #16325c; padding: 12px; box-sizing: border-box; }
+  button { font: inherit; padding: 6px 12px; margin-right: 8px; }
+  #log { margin-top: 8px; font-family: ui-monospace, monospace; font-size: 12px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<strong>Embedding spike guest</strong>
+<div id="facts"></div>
+<p>
+  <button id="send">Send request to host</button>
+  <button id="fs">Fullscreen from inside</button>
+</p>
+<div id="log"></div>
+<script>
+  const SF_ORIGIN = /^https:\/\/[a-z0-9-]+(--[a-z0-9-]+)?(\.[a-z0-9-]+)*\.(lightning\.force\.com|my\.salesforce\.com|salesforce-setup\.com)$/;
+  const logEl = document.getElementById('log');
+  const log = (m) => { logEl.textContent += m + '\n'; };
+
+  let parentOrigin = null;
+  try {
+    const candidate = (location.ancestorOrigins && location.ancestorOrigins[0]) ||
+      (document.referrer ? new URL(document.referrer).origin : null);
+    if (candidate && SF_ORIGIN.test(candidate)) parentOrigin = candidate;
+    log('ancestor candidate: ' + candidate + ' accepted: ' + !!parentOrigin);
+  } catch (e) { log('origin detection failed: ' + e.message); }
+
+  let storage = 'ok';
+  try { localStorage.setItem('spike', '1'); localStorage.removeItem('spike'); } catch (e) { storage = 'blocked: ' + e.name; }
+
+  const facts = () => {
+    document.getElementById('facts').textContent =
+      'framed=' + (window.parent !== window) + ' innerHeight=' + window.innerHeight +
+      ' innerWidth=' + window.innerWidth + ' storage=' + storage;
+  };
+  facts();
+  window.addEventListener('resize', facts);
+
+  let seq = 0;
+  const post = (type, payload, re) => {
+    if (!parentOrigin) { log('no accepted parent origin, not posting'); return; }
+    const msg = { v: 1, id: 'g' + (++seq), type, payload };
+    if (re) msg.re = re;
+    window.parent.postMessage(msg, parentOrigin);
+    log('sent ' + JSON.stringify(msg));
+  };
+
+  window.addEventListener('message', (event) => {
+    if (event.origin !== parentOrigin || event.source !== window.parent) {
+      log('REJECTED message from ' + event.origin);
+      return;
+    }
+    log('received ' + JSON.stringify(event.data));
+    if (event.data && event.data.type === 'ping') post('pong', { echoed: event.data.payload }, event.data.id);
+  });
+
+  document.getElementById('send').addEventListener('click', () => post('echo', { at: Date.now() }));
+  document.getElementById('fs').addEventListener('click', () => {
+    document.documentElement.requestFullscreen().then(() => log('inner fullscreen ok'), (e) => log('inner fullscreen refused: ' + e.message));
+  });
+
+  post('hello', { app: 'spike' });
+</script>
+</body>
+</html>
