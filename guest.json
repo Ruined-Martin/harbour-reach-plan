@@ -1,0 +1,4 @@
+{
+  "api": "https://cl1794736623865.my.salesforce-sites.com/hr/services/apexrest/re/v1",
+  "pollSeconds": 60
+}
